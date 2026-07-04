@@ -1,0 +1,7 @@
+name,phone,source,channel,lead_level
+李四,13900001111,CSV导入,抖音,B
+王五,13900002222,CSV导入,百度,A
+赵六,,CSV导入,公众号,C
+钱七,13800001001,CSV导入,抖音,B
+孙八,13900003333,CSV导入,线下,C
+周九,139abc,CSV导入,百度,C

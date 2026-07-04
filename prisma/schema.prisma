@@ -1,0 +1,214 @@
+// Lead lifecycle schema — see docs/DESIGN.md
+// phone: indexed, deduped in app layer (not DB unique); Lead.version: optimistic lock
+// SQLite has no native enums; values enforced in src/lib/enums.ts + Zod
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model SalesUser {
+  id         String   @id @default(cuid())
+  name       String
+  role       String // SalesRole: SALES / SUPERVISOR / OPERATOR
+  email      String?  @unique
+  phone      String?
+  department String?
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  ownedLeads Lead[]           @relation("LeadOwner")
+  followUps  FollowUpRecord[]
+  statusLogs LeadStatusLog[]
+
+  @@map("sales_users")
+}
+
+model Lead {
+  id               String    @id @default(cuid())
+  name             String?
+  phone            String
+  source           String
+  channel          String
+  firstSource      String    @map("first_source")
+  firstChannel     String    @map("first_channel")
+  latestSource     String    @map("latest_source")
+  latestChannel    String    @map("latest_channel")
+  leadLevel        String    @default("C") @map("lead_level") // LeadLevel A/B/C/D
+  mainStatus       String    @map("main_status") // MainStatus
+  callStatus       String    @default("NOT_CALLED") @map("call_status") // CallStatus
+  wechatStatus     String    @default("NOT_STARTED") @map("wechat_status") // WechatStatus
+  followStatus     String    @default("NOT_FOLLOWED") @map("follow_status") // FollowStatus
+  ownerId          String?   @map("owner_id")
+  assignedAt       DateTime? @map("assigned_at")
+  callAttemptCount Int       @default(0) @map("call_attempt_count")
+  lastFollowUpAt   DateTime? @map("last_follow_up_at")
+  firstFollowUpAt  DateTime? @map("first_follow_up_at")
+  mqlAt            DateTime? @map("mql_at")
+  mqlReason        String?   @map("mql_reason")
+  sqlAt            DateTime? @map("sql_at")
+  sqlReason        String?   @map("sql_reason")
+  sqlRevokedAt     DateTime? @map("sql_revoked_at")
+  sqlRevokeReason  String?   @map("sql_revoke_reason")
+  invalidReason    String?   @map("invalid_reason") // InvalidReason
+  importBatchId    String?   @map("import_batch_id")
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  owner            SalesUser?        @relation("LeadOwner", fields: [ownerId], references: [id])
+  importBatch      ImportBatch?      @relation(fields: [importBatchId], references: [id])
+  callRecords      CallRecord[]
+  followUpRecords  FollowUpRecord[]
+  statusLogs       LeadStatusLog[]
+  tasks            Task[]
+  duplicateRecords DuplicateRecord[]
+
+  @@index([phone])
+  @@index([mainStatus])
+  @@index([ownerId])
+  @@index([channel])
+  @@index([mqlAt])
+  @@index([sqlAt])
+  @@index([createdAt])
+  @@map("leads")
+}
+
+model CallRecord {
+  id              String   @id @default(cuid())
+  leadId          String   @map("lead_id")
+  callAttemptNo   Int      @map("call_attempt_no")
+  callStatus      String   @map("call_status") // CallStatus
+  connected       Boolean  @default(false)
+  result          String?
+  invalidReason   String?  @map("invalid_reason") // InvalidReason
+  sourceSystem    String?  @map("source_system")
+  externalEventId String?  @map("external_event_id")
+  calledAt        DateTime @map("called_at")
+  operatorId      String?  @map("operator_id")
+  remark          String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([calledAt])
+  @@map("call_records")
+}
+
+model FollowUpRecord {
+  id             String    @id @default(cuid())
+  leadId         String    @map("lead_id")
+  ownerId        String    @map("owner_id")
+  content        String
+  intentionLevel String    @map("intention_level") // IntentionLevel LOW/MEDIUM/HIGH
+  nextAction     String?   @map("next_action")
+  nextFollowUpAt DateTime? @map("next_follow_up_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  lead  Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  owner SalesUser @relation(fields: [ownerId], references: [id])
+
+  @@index([leadId])
+  @@index([createdAt])
+  @@map("follow_up_records")
+}
+
+model LeadStatusLog {
+  id                String   @id @default(cuid())
+  leadId            String   @map("lead_id")
+  fromStatus        String   @map("from_status") // MainStatus
+  toStatus          String   @map("to_status") // MainStatus
+  operatorId        String?  @map("operator_id")
+  triggerSource     String   @map("trigger_source") // TriggerSource
+  reason            String?
+  relatedRecordType String?  @map("related_record_type")
+  relatedRecordId   String?  @map("related_record_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  lead     Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  operator SalesUser? @relation(fields: [operatorId], references: [id])
+
+  @@index([leadId])
+  @@index([createdAt])
+  @@map("lead_status_logs")
+}
+
+model Task {
+  id         String    @id @default(cuid())
+  leadId     String    @map("lead_id")
+  taskType   String    @map("task_type") // TaskType
+  title      String
+  status     String    @default("OPEN") // TaskStatus OPEN/RESOLVED/CLOSED
+  dueAt      DateTime? @map("due_at")
+  resolvedAt DateTime? @map("resolved_at")
+  resolvedBy String?   @map("resolved_by")
+  remark     String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([taskType, status])
+  @@index([leadId])
+  @@map("tasks")
+}
+
+model DuplicateRecord {
+  id            String   @id @default(cuid())
+  leadId        String   @map("lead_id")
+  phone         String
+  newSource     String   @map("new_source")
+  newChannel    String   @map("new_channel")
+  action        String? // DuplicateAction
+  importBatchId String?  @map("import_batch_id")
+  detectedAt    DateTime @default(now()) @map("detected_at")
+  remark        String?
+
+  lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id])
+
+  @@index([phone])
+  @@index([leadId])
+  @@map("duplicate_records")
+}
+
+model ImportBatch {
+  id             String    @id @default(cuid())
+  filename       String
+  totalCount     Int       @default(0) @map("total_count")
+  successCount   Int       @default(0) @map("success_count")
+  duplicateCount Int       @default(0) @map("duplicate_count")
+  failedCount    Int       @default(0) @map("failed_count")
+  status         String    @default("processing") // processing/done/failed
+  errorSummary   String?   @map("error_summary")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  finishedAt     DateTime? @map("finished_at")
+
+  leads      Lead[]
+  duplicates DuplicateRecord[]
+
+  @@map("import_batches")
+}
+
+model IntegrationEventLog {
+  id              String    @id @default(cuid())
+  sourceSystem    String    @map("source_system")
+  externalEventId String    @map("external_event_id")
+  eventType       String    @map("event_type")
+  leadId          String?   @map("lead_id")
+  payload         String
+  processStatus   String    @default("RECEIVED") @map("process_status") // IntegrationProcessStatus
+  errorMessage    String?   @map("error_message")
+  processedAt     DateTime? @map("processed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@unique([sourceSystem, externalEventId])
+  @@index([leadId])
+  @@map("integration_event_logs")
+}
