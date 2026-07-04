@@ -19,7 +19,7 @@ Next.js 14 · Prisma · SQLite · 状态机 · 漏斗看板 · 异常待办 · C
 **环境：** Node.js 18+
 
 ```bash
-git clone <your-repo-url>
+git clone <https://github.com/chenfeiyu-ctrl/lead-mql-sql-demo.git>
 cd lead-mql-sql-demo
 
 cp .env.example .env
